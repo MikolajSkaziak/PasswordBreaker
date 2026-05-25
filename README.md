@@ -13,13 +13,13 @@ graph TD
     UI[Frontend: React Dashboard] -- "1. Konfiguracja ataku (REST API)" --> Server
     Server -- "6. Live Stats (SignalR)" --> UI
     
-    subgraph Węzeł Główny (.NET 10)
+    subgraph Node1 [Węzeł Główny .NET 10]
         Server[Master Server]
         Queue[(Concurrent Queue)]
         Server -- "Generuje Paczki" --> Queue
     end
     
-    subgraph Węzły Obliczeniowe
+    subgraph Node2 [Węzły Obliczeniowe]
         Worker1[Worker 1]
         Worker2[Worker 2]
         WorkerN[Worker N]
