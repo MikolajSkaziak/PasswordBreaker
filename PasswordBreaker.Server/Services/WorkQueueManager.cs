@@ -1,0 +1,120 @@
+using System.Collections.Concurrent;
+using PasswordBreaker.Shared.Models;
+using Microsoft.AspNetCore.SignalR;
+using PasswordBreaker.Server.Hubs;
+
+namespace PasswordBreaker.Server.Services;
+
+public class WorkQueueManager
+{
+    private readonly ConcurrentQueue<WorkChunk> _pendingChunks = new();
+    private readonly ConcurrentDictionary<string, WorkChunk> _assignedChunks = new(); // ConnectionId -> Chunk
+    private readonly IHubContext<WorkerHub> _workerHub;
+    private readonly IHubContext<DashboardHub> _dashboardHub;
+
+    public AttackStatus CurrentStatus { get; private set; } = new();
+
+    public WorkQueueManager(IHubContext<WorkerHub> workerHub, IHubContext<DashboardHub> dashboardHub)
+    {
+        _workerHub = workerHub;
+        _dashboardHub = dashboardHub;
+    }
+
+    public async Task StartAttackAsync(string targetHash, string hashType, string alphabet, int maxLength)
+    {
+        CurrentStatus = new AttackStatus
+        {
+            IsActive = true,
+            TargetHash = targetHash,
+            StartTime = DateTime.UtcNow,
+            TotalHashesComputed = 0
+        };
+
+        _pendingChunks.Clear();
+        _assignedChunks.Clear();
+
+        // Calculate total combinations
+        long totalCombinations = 0;
+        long currentCount = alphabet.Length;
+        for (int i = 1; i <= maxLength; i++)
+        {
+            totalCombinations += currentCount;
+            currentCount *= alphabet.Length;
+        }
+
+        // Chunking
+        long chunkSize = 1_000_000; // 1M hashes per chunk
+        long startIndex = 0;
+
+        while (startIndex < totalCombinations)
+        {
+            long endIndex = Math.Min(startIndex + chunkSize - 1, totalCombinations - 1);
+            _pendingChunks.Enqueue(new WorkChunk
+            {
+                TargetHash = targetHash,
+                HashType = hashType,
+                Alphabet = alphabet,
+                MaxLength = maxLength,
+                StartIndex = startIndex,
+                EndIndex = endIndex
+            });
+            startIndex = endIndex + 1;
+        }
+
+        await _dashboardHub.Clients.All.SendAsync("AttackStarted", CurrentStatus);
+    }
+
+    public WorkChunk? GetNextChunk(string connectionId)
+    {
+        if (!CurrentStatus.IsActive) return null;
+
+        if (_pendingChunks.TryDequeue(out var chunk))
+        {
+            _assignedChunks[connectionId] = chunk;
+            return chunk;
+        }
+
+        return null;
+    }
+
+    public async Task ReportResultAsync(string connectionId, bool found, string? password, long hashesComputed)
+    {
+        CurrentStatus.TotalHashesComputed += hashesComputed;
+        _assignedChunks.TryRemove(connectionId, out _);
+
+        if (found && CurrentStatus.IsActive)
+        {
+            CurrentStatus.IsActive = false;
+            CurrentStatus.FoundPassword = password;
+            CurrentStatus.EndTime = DateTime.UtcNow;
+
+            await _workerHub.Clients.All.SendAsync("PasswordFound", password);
+            await _dashboardHub.Clients.All.SendAsync("AttackFinished", CurrentStatus);
+        }
+        else
+        {
+            await _dashboardHub.Clients.All.SendAsync("StatsUpdated", CurrentStatus.TotalHashesComputed);
+        }
+    }
+
+    public async Task ReportProgressAsync(long hashesComputed)
+    {
+        if (CurrentStatus.IsActive)
+        {
+            CurrentStatus.TotalHashesComputed += hashesComputed;
+            await _dashboardHub.Clients.All.SendAsync("StatsUpdated", CurrentStatus.TotalHashesComputed);
+        }
+    }
+
+    public void HandleWorkerDisconnect(string connectionId)
+    {
+        if (_assignedChunks.TryRemove(connectionId, out var chunk))
+        {
+            // Put the chunk back if the attack is still active
+            if (CurrentStatus.IsActive)
+            {
+                _pendingChunks.Enqueue(chunk);
+            }
+        }
+    }
+}
