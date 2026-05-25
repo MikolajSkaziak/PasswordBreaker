@@ -64,6 +64,21 @@ public class WorkQueueManager
         await _dashboardHub.Clients.All.SendAsync("AttackStarted", CurrentStatus);
     }
 
+    public async Task StopAttackAsync()
+    {
+        if (!CurrentStatus.IsActive) return;
+
+        CurrentStatus.IsActive = false;
+        CurrentStatus.EndTime = DateTime.UtcNow;
+        _pendingChunks.Clear();
+        _assignedChunks.Clear();
+
+        // Broadcast to workers to stop
+        await _workerHub.Clients.All.SendAsync("PasswordFound", "[ATTACK STOPPED BY USER]");
+        // Broadcast to dashboard
+        await _dashboardHub.Clients.All.SendAsync("AttackFinished", CurrentStatus);
+    }
+
     public WorkChunk? GetNextChunk(string connectionId)
     {
         if (!CurrentStatus.IsActive) return null;

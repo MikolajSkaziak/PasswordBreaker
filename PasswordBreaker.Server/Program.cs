@@ -28,6 +28,13 @@ app.MapPost("/api/attack/start", async (WorkQueueManager manager, StartAttackReq
     return Results.Ok();
 });
 
+// API endpoint to stop the attack
+app.MapPost("/api/attack/stop", async (WorkQueueManager manager) =>
+{
+    await manager.StopAttackAsync();
+    return Results.Ok();
+});
+
 // API endpoint to get current status
 app.MapGet("/api/attack/status", (WorkQueueManager manager) =>
 {

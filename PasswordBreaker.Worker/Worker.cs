@@ -20,7 +20,7 @@ public class Worker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl("http://localhost:5000/workerHub")
+            .WithUrl("http://localhost:15000/workerHub")
             .WithAutomaticReconnect()
             .Build();
 

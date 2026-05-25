@@ -18,7 +18,7 @@ interface ChartData {
   hps: number;
 }
 
-const API_URL = 'http://localhost:5000';
+const API_URL = 'http://localhost:15000';
 
 function App() {
   const [status, setStatus] = useState<AttackStatus | null>(null);
@@ -80,7 +80,7 @@ function App() {
     };
   }, []);
 
-  // WIDEOGRAFICZNIE PŁYNNY WYKRES - aktualizacja co 200ms (5 razy na sekundę)
+  // PŁYNNY WYKRES - aktualizacja co 200ms
   useEffect(() => {
     const UPDATE_INTERVAL_MS = 200;
     const MULTIPLIER_TO_SEC = 1000 / UPDATE_INTERVAL_MS;
@@ -91,19 +91,15 @@ function App() {
         const diff = currentTotal - prevHashesRef.current;
         prevHashesRef.current = currentTotal;
 
-        // Skalujemy różnicę z 200ms do pełnej sekundy (x5)
         const instantaneousHps = diff * MULTIPLIER_TO_SEC;
 
         setCurrentHps(prevHps => {
-          // Delikatne wygładzanie (30% stare, 70% nowe) dla płynności
           const smoothedHps = prevHps === 0 ? instantaneousHps : Math.round((prevHps * 0.3) + (instantaneousHps * 0.7));
           
           setChartData(prev => {
             const now = new Date();
-            const timeLabel = `${now.getSeconds()}.${Math.floor(now.getMilliseconds() / 100)}`; // np. "45.2"
-            
+            const timeLabel = `${now.getSeconds()}.${Math.floor(now.getMilliseconds() / 100)}`; 
             const newData = [...prev, { time: timeLabel, hps: smoothedHps }];
-            // Trzymamy ostatnie 60 punktów = 12 sekund płynnej historii
             return newData.length > 60 ? newData.slice(newData.length - 60) : newData;
           });
 
@@ -132,13 +128,21 @@ function App() {
     }
   };
 
-  const isSuccess = !status?.isActive && status?.foundPassword != null;
+  const handleStopAttack = async () => {
+    try {
+      await axios.post(`${API_URL}/api/attack/stop`);
+    } catch (error) {
+      console.error("Failed to stop attack", error);
+    }
+  };
+
+  const isSuccess = !status?.isActive && status?.foundPassword != null && status?.foundPassword !== "[ATTACK STOPPED BY USER]";
+  const isStopped = !status?.isActive && status?.foundPassword === "[ATTACK STOPPED BY USER]";
 
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Header */}
         <header className="flex items-center justify-between border-b border-slate-800 pb-6">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-8 h-8 text-red-500" />
@@ -154,7 +158,6 @@ function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Left Column - Controls */}
           <div className="space-y-6">
             <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -220,14 +223,22 @@ function App() {
                 >
                   <Activity className="w-5 h-5" /> Launch Attack
                 </button>
+
+                {status?.isActive && (
+                  <button 
+                    type="button"
+                    onClick={handleStopAttack}
+                    className="w-full bg-red-600 hover:bg-red-500 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 mt-2"
+                  >
+                    <ShieldAlert className="w-5 h-5" /> Stop Attack
+                  </button>
+                )}
               </form>
             </div>
           </div>
 
-          {/* Right Column - Stats & Progress */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* KPI Cards */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 flex flex-col justify-center">
                 <span className="text-sm font-medium text-slate-400 mb-1">Current Speed</span>
@@ -244,20 +255,28 @@ function App() {
               </div>
             </div>
 
-            {/* Results Alert */}
             {isSuccess && (
               <div className="bg-green-500/10 border border-green-500/50 rounded-xl p-6 flex items-start gap-4">
                 <CheckCircle className="w-8 h-8 text-green-500 shrink-0" />
                 <div>
                   <h3 className="text-lg font-semibold text-green-400">Password Cracked Successfully!</h3>
                   <div className="mt-2 font-mono text-2xl bg-black/30 px-4 py-2 rounded border border-green-500/20 inline-block text-green-300">
-                    {status.foundPassword}
+                    {status?.foundPassword}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Chart */}
+            {isStopped && (
+              <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-xl p-6 flex items-start gap-4">
+                <ShieldAlert className="w-8 h-8 text-yellow-500 shrink-0" />
+                <div>
+                  <h3 className="text-lg font-semibold text-yellow-400">Attack Cancelled</h3>
+                  <p className="text-yellow-200/70 text-sm mt-1">The process was manually terminated by the operator.</p>
+                </div>
+              </div>
+            )}
+
             <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 overflow-hidden">
               <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
                 <Cpu className="w-5 h-5 text-purple-400" /> Performance History
@@ -266,7 +285,6 @@ function App() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                    {/* Hide X axis labels for a cleaner "monitor" look */}
                     <XAxis dataKey="time" hide={true} />
                     <YAxis 
                       stroke="#94a3b8" 
@@ -287,7 +305,7 @@ function App() {
                       stroke="#818cf8" 
                       strokeWidth={3}
                       dot={false}
-                      isAnimationActive={false} /* CRITICAL: Must be false for smooth continuous scrolling */
+                      isAnimationActive={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
