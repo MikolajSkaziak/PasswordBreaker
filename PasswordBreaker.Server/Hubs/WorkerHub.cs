@@ -13,7 +13,7 @@ public class WorkerHub : Hub
         _workQueue = workQueue;
     }
 
-    public WorkChunk? RequestWork()
+    public async Task<WorkChunk?> RequestWork()
     {
         return _workQueue.GetNextChunk(Context.ConnectionId);
     }
@@ -30,13 +30,15 @@ public class WorkerHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        _workQueue.HandleWorkerConnect(Context.ConnectionId);
+        Console.WriteLine($"[SIGNALR] Worker connected: {Context.ConnectionId}");
+        await _workQueue.HandleWorkerConnect(Context.ConnectionId);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _workQueue.HandleWorkerDisconnect(Context.ConnectionId);
+        Console.WriteLine($"[SIGNALR] Worker disconnected: {Context.ConnectionId}");
+        await _workQueue.HandleWorkerDisconnect(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 }

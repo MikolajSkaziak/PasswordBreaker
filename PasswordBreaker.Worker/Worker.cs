@@ -9,18 +9,23 @@ namespace PasswordBreaker.Worker;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
+    private readonly IConfiguration _configuration;
     private HubConnection? _hubConnection;
     private CancellationTokenSource _attackCts = new();
 
-    public Worker(ILogger<Worker> logger)
+    public Worker(ILogger<Worker> logger, IConfiguration configuration)
     {
         _logger = logger;
+        _configuration = configuration;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        string serverUrl = _configuration.GetValue<string>("ServiceUrls:Server") ?? "http://localhost:80";
+        _logger.LogInformation($"Connecting to server at {serverUrl}...");
+
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl("http://localhost:15000/workerHub")
+            .WithUrl($"{serverUrl}/workerHub")
             .WithAutomaticReconnect()
             .Build();
 
@@ -36,7 +41,6 @@ public class Worker : BackgroundService
             {
                 if (_hubConnection.State == HubConnectionState.Disconnected)
                 {
-                    _logger.LogInformation("Connecting to server...");
                     await _hubConnection.StartAsync(stoppingToken);
                     _logger.LogInformation("Connected.");
                 }
@@ -46,7 +50,7 @@ public class Worker : BackgroundService
 
                 if (chunk != null)
                 {
-                    _logger.LogInformation($"Received chunk: {chunk.ChunkId} for hash {chunk.TargetHash}. Range: {chunk.StartIndex}-{chunk.EndIndex}");
+                    _logger.LogInformation($"Received chunk: {chunk.ChunkId}. Range: {chunk.StartIndex}-{chunk.EndIndex}");
                     
                     if (_attackCts.IsCancellationRequested)
                     {
@@ -83,14 +87,17 @@ public class Worker : BackgroundService
         bool found = false;
         string? foundPassword = null;
         long hashesComputed = 0;
-
         long localHashesSinceLastReport = 0;
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, _attackCts.Token);
+        
+        int threadLimit = _configuration.GetValue<int>("threads", 0);
+        if (threadLimit <= 0) threadLimit = Environment.ProcessorCount;
+
         var parallelOptions = new ParallelOptions
         {
             CancellationToken = linkedCts.Token,
-            MaxDegreeOfParallelism = Environment.ProcessorCount
+            MaxDegreeOfParallelism = threadLimit
         };
 
         var stopwatch = Stopwatch.StartNew();
@@ -139,12 +146,8 @@ public class Worker : BackgroundService
         {
             _logger.LogInformation($"[SUCCESS] Password found: {foundPassword} in {stopwatch.ElapsedMilliseconds}ms");
         }
-        else
-        {
-            _logger.LogInformation($"Chunk {chunk.ChunkId} finished. Hashes: {hashesComputed} in {stopwatch.ElapsedMilliseconds}ms");
-        }
 
-        // Report final result for chunk (we pass 0 for hashes computed to avoid double counting if we use ReportProgress, but since ReportResult expects total for chunk, we need to pass just the remaining)
+        // Report final result for chunk
         if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
         {
             await _hubConnection.InvokeAsync("ReportResult", found, foundPassword, remainingToReport, stoppingToken);

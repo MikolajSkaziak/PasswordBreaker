@@ -4,6 +4,8 @@ namespace PasswordBreaker.Server.Hubs;
 
 public class DashboardHub : Hub
 {
-    // Frontend can connect here to receive stats.
-    // Methods to interact from frontend could be placed here.
+    public async Task NotifyWorkerCount(int count)
+    {
+        await Clients.All.SendAsync("WorkerCountUpdated", count);
+    }
 }

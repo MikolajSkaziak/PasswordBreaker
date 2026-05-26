@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using PasswordBreaker.Shared.Models;
 using Microsoft.AspNetCore.SignalR;
 using PasswordBreaker.Server.Hubs;
+using PasswordBreaker.Server.Data;
 
 namespace PasswordBreaker.Server.Services;
 
@@ -11,13 +12,15 @@ public class WorkQueueManager
     private readonly ConcurrentDictionary<string, WorkChunk> _assignedChunks = new(); // ConnectionId -> Chunk
     private readonly IHubContext<WorkerHub> _workerHub;
     private readonly IHubContext<DashboardHub> _dashboardHub;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public AttackStatus CurrentStatus { get; private set; } = new();
 
-    public WorkQueueManager(IHubContext<WorkerHub> workerHub, IHubContext<DashboardHub> dashboardHub)
+    public WorkQueueManager(IHubContext<WorkerHub> workerHub, IHubContext<DashboardHub> dashboardHub, IServiceScopeFactory scopeFactory)
     {
         _workerHub = workerHub;
         _dashboardHub = dashboardHub;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task StartAttackAsync(string targetHash, string hashType, string alphabet, int maxLength)
@@ -88,6 +91,7 @@ public class WorkQueueManager
         if (_pendingChunks.TryDequeue(out var chunk))
         {
             _assignedChunks[connectionId] = chunk;
+            Console.WriteLine($"[QUEUE] Assigned chunk {chunk.StartIndex}-{chunk.EndIndex} to worker {connectionId}");
             return chunk;
         }
 
@@ -97,13 +101,29 @@ public class WorkQueueManager
     public async Task ReportResultAsync(string connectionId, bool found, string? password, long hashesComputed)
     {
         CurrentStatus.TotalHashesComputed += hashesComputed;
-        _assignedChunks.TryRemove(connectionId, out _);
+        _assignedChunks.TryRemove(connectionId, out var chunk);
 
         if (found && CurrentStatus.IsActive)
         {
             CurrentStatus.IsActive = false;
             CurrentStatus.FoundPassword = password;
             CurrentStatus.EndTime = DateTime.UtcNow;
+
+            // Save to database
+            if (password != null && chunk != null)
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                db.CrackedPasswords.Add(new CrackedPassword
+                {
+                    Hash = chunk.TargetHash,
+                    Password = password,
+                    Algorithm = chunk.HashType,
+                    WorkerCount = CurrentStatus.ConnectedWorkers,
+                    CrackedAt = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync();
+            }
 
             await _workerHub.Clients.All.SendAsync("PasswordFound", password);
             await _dashboardHub.Clients.All.SendAsync("AttackFinished", CurrentStatus);
@@ -123,10 +143,10 @@ public class WorkQueueManager
         }
     }
 
-    public void HandleWorkerDisconnect(string connectionId)
+    public async Task HandleWorkerDisconnect(string connectionId)
     {
         CurrentStatus.ConnectedWorkers = Math.Max(0, CurrentStatus.ConnectedWorkers - 1);
-        _dashboardHub.Clients.All.SendAsync("WorkerCountUpdated", CurrentStatus.ConnectedWorkers);
+        await _dashboardHub.Clients.All.SendAsync("WorkerCountUpdated", CurrentStatus.ConnectedWorkers);
 
         if (_assignedChunks.TryRemove(connectionId, out var chunk))
         {
@@ -138,9 +158,9 @@ public class WorkQueueManager
         }
     }
 
-    public void HandleWorkerConnect(string connectionId)
+    public async Task HandleWorkerConnect(string connectionId)
     {
         CurrentStatus.ConnectedWorkers++;
-        _dashboardHub.Clients.All.SendAsync("WorkerCountUpdated", CurrentStatus.ConnectedWorkers);
+        await _dashboardHub.Clients.All.SendAsync("WorkerCountUpdated", CurrentStatus.ConnectedWorkers);
     }
 }
