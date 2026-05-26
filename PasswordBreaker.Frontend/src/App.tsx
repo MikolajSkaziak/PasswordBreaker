@@ -9,6 +9,7 @@ interface AttackStatus {
   foundPassword: string | null;
   targetHash: string;
   totalHashesComputed: number;
+  connectedWorkers: number;
   startTime: string;
   endTime: string | null;
 }
@@ -24,6 +25,7 @@ function App() {
   const [status, setStatus] = useState<AttackStatus | null>(null);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [currentHps, setCurrentHps] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   
   // Form State
   const [targetHash, setTargetHash] = useState('a9c449d4fa44e9e5a41c574ae55ce4d9');
@@ -43,6 +45,15 @@ function App() {
       latestTotalRef.current = res.data.totalHashesComputed;
       isActiveRef.current = res.data.isActive;
       prevHashesRef.current = res.data.totalHashesComputed;
+      
+      if (res.data.isActive && res.data.startTime) {
+        const start = new Date(res.data.startTime).getTime();
+        setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+      } else if (res.data.startTime && res.data.endTime) {
+        const start = new Date(res.data.startTime).getTime();
+        const end = new Date(res.data.endTime).getTime();
+        setElapsedSeconds(Math.floor((end - start) / 1000));
+      }
     }).catch(err => console.error("Could not fetch initial status", err));
 
     // SignalR Connection
@@ -58,6 +69,7 @@ function App() {
       prevHashesRef.current = 0;
       setChartData([]);
       setCurrentHps(0);
+      setElapsedSeconds(0);
     });
 
     connection.on('StatsUpdated', (totalHashes: number) => {
@@ -69,6 +81,16 @@ function App() {
       setStatus(finalStatus);
       isActiveRef.current = false;
       latestTotalRef.current = finalStatus.totalHashesComputed;
+      
+      if (finalStatus.startTime && finalStatus.endTime) {
+        const start = new Date(finalStatus.startTime).getTime();
+        const end = new Date(finalStatus.endTime).getTime();
+        setElapsedSeconds(Math.floor((end - start) / 1000));
+      }
+    });
+
+    connection.on('WorkerCountUpdated', (count: number) => {
+      setStatus(s => s ? { ...s, connectedWorkers: count } : null);
     });
 
     connection.start()
@@ -79,6 +101,20 @@ function App() {
       connection.stop();
     };
   }, []);
+
+  // Timer Effect
+  useEffect(() => {
+    let interval: number;
+    if (status?.isActive) {
+      interval = setInterval(() => {
+        if (status.startTime) {
+          const start = new Date(status.startTime).getTime();
+          setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [status?.isActive, status?.startTime]);
 
   // PŁYNNY WYKRES - aktualizacja co 200ms
   useEffect(() => {
@@ -139,6 +175,13 @@ function App() {
   const isSuccess = !status?.isActive && status?.foundPassword != null && status?.foundPassword !== "[ATTACK STOPPED BY USER]";
   const isStopped = !status?.isActive && status?.foundPassword === "[ATTACK STOPPED BY USER]";
 
+  const formatDuration = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -148,11 +191,18 @@ function App() {
             <ShieldAlert className="w-8 h-8 text-red-500" />
             <h1 className="text-3xl font-bold tracking-tight">Password Breaker</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${status?.isActive ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
-            <span className="text-sm font-medium text-slate-400">
-              {status?.isActive ? 'ATTACK IN PROGRESS' : 'IDLE'}
-            </span>
+          <div className="flex items-center gap-6">
+             <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Workers</span>
+                <span className="text-xl font-mono font-bold text-blue-400">{status?.connectedWorkers || 0}</span>
+             </div>
+             <div className="h-8 w-[1px] bg-slate-800" />
+             <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${status?.isActive ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
+                <span className="text-sm font-medium text-slate-400">
+                  {status?.isActive ? 'ATTACK IN PROGRESS' : 'IDLE'}
+                </span>
+             </div>
           </div>
         </header>
 
@@ -234,6 +284,13 @@ function App() {
                   </button>
                 )}
               </form>
+            </div>
+
+            <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
+               <span className="text-sm font-medium text-slate-400 mb-1 block">Attack Duration</span>
+               <div className="text-4xl font-mono font-bold text-white tracking-tighter">
+                  {formatDuration(elapsedSeconds)}
+               </div>
             </div>
           </div>
 

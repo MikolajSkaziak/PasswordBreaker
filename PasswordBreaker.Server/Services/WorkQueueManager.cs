@@ -22,12 +22,14 @@ public class WorkQueueManager
 
     public async Task StartAttackAsync(string targetHash, string hashType, string alphabet, int maxLength)
     {
+        int workers = CurrentStatus.ConnectedWorkers;
         CurrentStatus = new AttackStatus
         {
             IsActive = true,
             TargetHash = targetHash,
             StartTime = DateTime.UtcNow,
-            TotalHashesComputed = 0
+            TotalHashesComputed = 0,
+            ConnectedWorkers = workers
         };
 
         _pendingChunks.Clear();
@@ -123,6 +125,9 @@ public class WorkQueueManager
 
     public void HandleWorkerDisconnect(string connectionId)
     {
+        CurrentStatus.ConnectedWorkers = Math.Max(0, CurrentStatus.ConnectedWorkers - 1);
+        _dashboardHub.Clients.All.SendAsync("WorkerCountUpdated", CurrentStatus.ConnectedWorkers);
+
         if (_assignedChunks.TryRemove(connectionId, out var chunk))
         {
             // Put the chunk back if the attack is still active
@@ -131,5 +136,11 @@ public class WorkQueueManager
                 _pendingChunks.Enqueue(chunk);
             }
         }
+    }
+
+    public void HandleWorkerConnect(string connectionId)
+    {
+        CurrentStatus.ConnectedWorkers++;
+        _dashboardHub.Clients.All.SendAsync("WorkerCountUpdated", CurrentStatus.ConnectedWorkers);
     }
 }

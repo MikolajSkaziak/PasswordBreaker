@@ -28,9 +28,15 @@ public class WorkerHub : Hub
         await _workQueue.ReportProgressAsync(hashesComputed);
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnConnectedAsync()
+    {
+        _workQueue.HandleWorkerConnect(Context.ConnectionId);
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         _workQueue.HandleWorkerDisconnect(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
+        await base.OnDisconnectedAsync(exception);
     }
 }
