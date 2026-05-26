@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: passwordbreaker
     ports:
-      - "5433:5432"
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -16,28 +16,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
-  server:
-    build:
-      context: .
-      dockerfile: PasswordBreaker.Server/Dockerfile
-    container_name: passwordbreaker-server
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - ConnectionStrings__DefaultConnection=Host=db;Database=passwordbreaker;Username=postgres;Password=postgres
-      - ASPNETCORE_URLS=http://+:80
-      - ASPNETCORE_ENVIRONMENT=Development
-    ports:
-      - "15000:80"
-
   frontend:
     build:
       context: .
       dockerfile: PasswordBreaker.Frontend/Dockerfile
     container_name: passwordbreaker-frontend
-    depends_on:
-      - server
     ports:
       - "5173:80"
 

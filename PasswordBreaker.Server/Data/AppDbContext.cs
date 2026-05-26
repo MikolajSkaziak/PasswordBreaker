@@ -9,6 +9,7 @@ public class CrackedPassword
     public string Password { get; set; } = string.Empty;
     public string Algorithm { get; set; } = string.Empty;
     public int WorkerCount { get; set; }
+    public TimeSpan Duration { get; set; }
     public DateTime CrackedAt { get; set; } = DateTime.UtcNow;
 }
 

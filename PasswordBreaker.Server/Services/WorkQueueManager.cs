@@ -120,6 +120,7 @@ public class WorkQueueManager
                     Password = password,
                     Algorithm = chunk.HashType,
                     WorkerCount = CurrentStatus.ConnectedWorkers,
+                    Duration = CurrentStatus.EndTime.Value - CurrentStatus.StartTime,
                     CrackedAt = DateTime.UtcNow
                 });
                 await db.SaveChangesAsync();

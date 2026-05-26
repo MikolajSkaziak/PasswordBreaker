@@ -14,8 +14,32 @@ public class WorkerProcessManager
     {
         _logger = logger;
         _dashboardHub = dashboardHub;
-        // Path relative to the project directory when running via 'dotnet run'
-        _workerProjectPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "PasswordBreaker.Worker", "PasswordBreaker.Worker.csproj"));
+        
+        // Find the worker project path more robustly
+        var currentDir = Directory.GetCurrentDirectory();
+        // If we are in the Server bin folder, we need to go up more levels
+        _workerProjectPath = FindWorkerProject(currentDir);
+    }
+
+    private string FindWorkerProject(string startDir)
+    {
+        var dir = startDir;
+        while (dir != null)
+        {
+            var potentialPath = Path.Combine(dir, "PasswordBreaker.Worker", "PasswordBreaker.Worker.csproj");
+            if (File.Exists(potentialPath)) return potentialPath;
+            
+            // Also check sibling if we are in PasswordBreaker.Server
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent != null)
+            {
+                potentialPath = Path.Combine(parent, "PasswordBreaker.Worker", "PasswordBreaker.Worker.csproj");
+                if (File.Exists(potentialPath)) return potentialPath;
+            }
+
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+        throw new FileNotFoundException("Could not find PasswordBreaker.Worker.csproj");
     }
 
     public async Task SetWorkerCountAsync(int count)
@@ -50,28 +74,31 @@ public class WorkerProcessManager
 
     private void StartNewWorker()
     {
-        var workerDir = Path.GetDirectoryName(_workerProjectPath);
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = "run -- threads=1 ServiceUrls:Server=http://localhost:80",
-            WorkingDirectory = workerDir,
+            Arguments = $"run --project \"{_workerProjectPath}\" -c Release -- --ServiceUrls:Server http://localhost:15000 --threads 1",
             UseShellExecute = false,
             CreateNoWindow = true,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
         };
-
 
         try
         {
-            var process = Process.Start(startInfo);
-            if (process != null)
-            {
-                _processes.Add(process);
-                _logger.LogInformation($"[MANAGER] Spawned worker PID: {process.Id}. Directory: {workerDir}");
-                Console.WriteLine($"[SERVER] Worker process started (PID: {process.Id}). Waiting for connection...");
-            }
+            var process = new Process { StartInfo = startInfo };
+            
+            // Redirect output to server console so user can see what's happening
+            process.OutputDataReceived += (s, e) => { if (e.Data != null) Console.WriteLine($"[Worker {process.Id}] {e.Data}"); };
+            process.ErrorDataReceived += (s, e) => { if (e.Data != null) Console.Error.WriteLine($"[Worker {process.Id} ERROR] {e.Data}"); };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            _processes.Add(process);
+            _logger.LogInformation($"[MANAGER] Spawned worker PID: {process.Id}");
+            Console.WriteLine($"[SERVER] Worker process started (PID: {process.Id}). Logs will be prefixed with [Worker {process.Id}]");
         }
         catch (Exception ex)
         {

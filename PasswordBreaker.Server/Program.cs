@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Database configuration
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Host=db;Database=passwordbreaker;Username=postgres;Password=postgres";
+    ?? "Host=localhost;Database=passwordbreaker;Username=postgres;Password=postgres";
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 

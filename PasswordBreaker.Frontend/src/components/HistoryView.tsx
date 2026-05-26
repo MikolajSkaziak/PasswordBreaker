@@ -9,6 +9,7 @@ interface CrackedPassword {
   password: string;
   algorithm: string;
   workerCount: number;
+  duration: string;
   crackedAt: string;
 }
 
@@ -39,6 +40,21 @@ const HistoryView = () => {
     return new Date(dateString).toLocaleString();
   };
 
+  const formatDuration = (duration: string) => {
+    if (!duration) return "N/A";
+    // duration is in format "HH:mm:ss.SSSSSSS" or "d.HH:mm:ss.SSSSSSS"
+    const parts = duration.split(':');
+    if (parts.length < 3) return duration;
+    
+    const seconds = parseFloat(parts[2]);
+    const minutes = parseInt(parts[1]);
+    const hours = parseInt(parts[0]);
+    
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds.toFixed(2)}s`;
+    if (minutes > 0) return `${minutes}m ${seconds.toFixed(2)}s`;
+    return `${seconds.toFixed(2)}s`;
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -67,6 +83,7 @@ const HistoryView = () => {
                 <th className="px-6 py-4 font-semibold">Hash</th>
                 <th className="px-6 py-4 font-semibold">Result</th>
                 <th className="px-6 py-4 font-semibold">Workers</th>
+                <th className="px-6 py-4 font-semibold">Duration</th>
                 <th className="px-6 py-4 font-semibold">Date</th>
               </tr>
             </thead>
@@ -74,7 +91,7 @@ const HistoryView = () => {
               <AnimatePresence>
                 {history.length === 0 && !isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 italic">
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500 italic">
                       No records in history yet. Launch an attack to start archiving.
                     </td>
                   </tr>
@@ -110,6 +127,12 @@ const HistoryView = () => {
                         <div className="flex items-center gap-2 text-blue-400 font-mono">
                           <Cpu className="w-4 h-4" />
                           <span>{item.workerCount}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-amber-400 font-mono">
+                          <Clock className="w-4 h-4" />
+                          <span>{formatDuration(item.duration)}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-400">
