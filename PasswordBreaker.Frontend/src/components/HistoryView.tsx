@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Key, Hash, Database, Cpu } from 'lucide-react';
+import { Clock, Key, Hash, Database, Cpu, FileText } from 'lucide-react';
 
 interface CrackedPassword {
   id: number;
@@ -55,6 +55,23 @@ const HistoryView = () => {
     return `${seconds.toFixed(2)}s`;
   };
 
+  const handleDownloadPdf = async (id: number, hash: string) => {
+    try {
+      const response = await axios.get(`${API_URL}/api/history/${id}/report`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Report_${hash.substring(0, 8)}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("Failed to download PDF", error);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -85,13 +102,14 @@ const HistoryView = () => {
                 <th className="px-6 py-4 font-semibold">Workers</th>
                 <th className="px-6 py-4 font-semibold">Duration</th>
                 <th className="px-6 py-4 font-semibold">Date</th>
+                <th className="px-6 py-4 font-semibold text-center">Report</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               <AnimatePresence>
                 {history.length === 0 && !isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500 italic">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500 italic">
                       No records in history yet. Launch an attack to start archiving.
                     </td>
                   </tr>
@@ -140,6 +158,15 @@ const HistoryView = () => {
                           <Clock className="w-4 h-4 opacity-50" />
                           {formatDate(item.crackedAt)}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => handleDownloadPdf(item.id, item.hash)}
+                          className="p-2 rounded-lg bg-slate-900 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 transition-all group"
+                          title="Download PDF Report"
+                        >
+                          <FileText className="w-5 h-5" />
+                        </button>
                       </td>
                     </motion.tr>
                   ))
