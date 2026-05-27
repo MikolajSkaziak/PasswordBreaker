@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Key, Hash, Database, Cpu } from 'lucide-react';
+import { Clock, Key, Hash, Database, Cpu, FileText } from 'lucide-react';
 
 interface CrackedPassword {
   id: number;
@@ -9,6 +9,7 @@ interface CrackedPassword {
   password: string;
   algorithm: string;
   workerCount: number;
+  duration: string;
   crackedAt: string;
 }
 
@@ -39,6 +40,38 @@ const HistoryView = () => {
     return new Date(dateString).toLocaleString();
   };
 
+  const formatDuration = (duration: string) => {
+    if (!duration) return "N/A";
+    // duration is in format "HH:mm:ss.SSSSSSS" or "d.HH:mm:ss.SSSSSSS"
+    const parts = duration.split(':');
+    if (parts.length < 3) return duration;
+    
+    const seconds = parseFloat(parts[2]);
+    const minutes = parseInt(parts[1]);
+    const hours = parseInt(parts[0]);
+    
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds.toFixed(2)}s`;
+    if (minutes > 0) return `${minutes}m ${seconds.toFixed(2)}s`;
+    return `${seconds.toFixed(2)}s`;
+  };
+
+  const handleDownloadPdf = async (id: number, hash: string) => {
+    try {
+      const response = await axios.get(`${API_URL}/api/history/${id}/report`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Report_${hash.substring(0, 8)}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("Failed to download PDF", error);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -67,14 +100,16 @@ const HistoryView = () => {
                 <th className="px-6 py-4 font-semibold">Hash</th>
                 <th className="px-6 py-4 font-semibold">Result</th>
                 <th className="px-6 py-4 font-semibold">Workers</th>
+                <th className="px-6 py-4 font-semibold">Duration</th>
                 <th className="px-6 py-4 font-semibold">Date</th>
+                <th className="px-6 py-4 font-semibold text-center">Report</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               <AnimatePresence>
                 {history.length === 0 && !isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 italic">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500 italic">
                       No records in history yet. Launch an attack to start archiving.
                     </td>
                   </tr>
@@ -112,11 +147,26 @@ const HistoryView = () => {
                           <span>{item.workerCount}</span>
                         </div>
                       </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-amber-400 font-mono">
+                          <Clock className="w-4 h-4" />
+                          <span>{formatDuration(item.duration)}</span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         <div className="flex items-center gap-2">
                           <Clock className="w-4 h-4 opacity-50" />
                           {formatDate(item.crackedAt)}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => handleDownloadPdf(item.id, item.hash)}
+                          className="p-2 rounded-lg bg-slate-900 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 transition-all group"
+                          title="Download PDF Report"
+                        >
+                          <FileText className="w-5 h-5" />
+                        </button>
                       </td>
                     </motion.tr>
                   ))

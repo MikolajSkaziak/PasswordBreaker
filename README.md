@@ -58,15 +58,7 @@ graph TD
 
 Aplikacja składa się z 3 elementów, które należy uruchomić niezależnie (w osobnych oknach terminala):
 
-### 1. Uruchomienie Serwera (Master)
-Otwórz terminal w katalogu głównym projektu i przejdź do folderu serwera:
-```bash
-cd PasswordBreaker.Server
-dotnet run
-```
-*Serwer wystartuje na porcie `http://localhost:5000`*
-
-### 2. Uruchomienie Frontendu (UI)
+### 1. Uruchom bazę i frontend (Docker)
 Otwórz drugi terminal, przejdź do folderu frontendu:
 ```bash
 cd PasswordBreaker.Frontend
@@ -75,13 +67,20 @@ npm run dev
 ```
 *Panel będzie dostępny pod adresem `http://localhost:5173/`*
 
-### 3. Uruchomienie Węzłów Roboczych (Workery)
-Otwórz trzeci terminal, przejdź do folderu workera i go uruchom. 
-**Aby przetestować skalowanie horyzontalne**, możesz otworzyć 4, 5 lub więcej terminali i w każdym odpalić komendę poniżej!
+### 2. Uruchom Serwer (Natywnie)
+Otwórz terminal w katalogu głównym projektu i przejdź do folderu serwera:
 ```bash
-cd PasswordBreaker.Worker
+cd PasswordBreaker.Server
 dotnet run
 ```
+*Serwer wystartuje na porcie `http://localhost:15000`*
+
+### 3. Zarządzanie Węzłami Roboczymi (Workery)
+Wszystko dzieje się automatycznie z poziomu przeglądarki:
+ - Wejdź na http://localhost:5173 (http://localhost:5173).
+ - Ustaw liczbę Active Workers (np. 2 lub 4).
+ - W konsoli serwera zobaczysz logi: [Worker XXX] Connected.
+ - Wpisz hasz, alfabet i kliknij Launch Attack.
 
 ## 📊 Przeprowadzenie Ataku
 
